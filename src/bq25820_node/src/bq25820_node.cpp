@@ -117,10 +117,6 @@ double BQ25820Node::read_charging_current() { return charger_.get_charging_curre
 
 bool BQ25820Node::is_charging() { return charger_.is_charging(); }
 
-// rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr battery_voltage_pub_;
-// rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr charging_current_pub_;
-// rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr charging_status_pub_;
-// rclcpp::TimerBase::SharedPtr timer_;
 
 //~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+
 //~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+~-=+

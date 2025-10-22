@@ -8,9 +8,20 @@
 
 #include "bq25820/bq25820.hpp"
 
+/// @file bq25820_node.hpp
+/// @brief ROS 2 node wrapper for the TI BQ25820 charger driver.
+
+/// @brief ROS 2 node wrapping the TI BQ25820 charger driver.
+///
+/// Publishes sensor_msgs::msg::BatteryState at a configurable rate.
+///
+/// Parameters:
+/// - device_path (string): I2C device path. Default: /dev/i2c-1
+/// - publish_rate (double): Publish rate in Hz. Default: 1.0
 class BQ25820Node : public rclcpp::Node
 {
   public:
+    /// @brief Construct the node and start the periodic publisher.
     BQ25820Node() : Node("bq25820_node")
     {
         // Declare parameters
@@ -35,22 +46,41 @@ class BQ25820Node : public rclcpp::Node
 
         RCLCPP_INFO(this->get_logger(), "BQ25820 Node initialized with device path: %s", device_path_.c_str());
     }
-    // virtual ~BQ25820Node();
 
+    
   private:
     bq25820::Bq25820 charger_;
 
+    /// @brief Timer callback invoked at publish_rate_ to update and publish state.
     void timer_callback();
+
+    /// @brief Build and publish a sensor_msgs::msg::BatteryState message from cached charger data.
     void publish_battery_state();
+
+    /// @brief Initialize the charger hardware/driver using device_path_.
+    /// @return true on success.
     bool initialize_charger();
+
+    /// @brief Read all relevant charger registers into cached fields.
     void read_charger_data();
 
+    /// @brief Read battery voltage in volts.
+    /// @return Voltage (V).
     double read_battery_voltage();
+
+    /// @brief Read charging/discharging current in amperes. Positive = charging, negative = discharging.
+    /// @return Current (A).
     double read_charging_current();
+
+    /// @brief Whether the pack is currently charging.
+    /// @return true if charging.
     bool   is_charging();
 
+    /// @brief Map internal status to sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS.
     uint8_t get_POWER_SUPPLY_STATUS();
+    /// @brief Map internal health to sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH.
     uint8_t get_POWER_SUPPLY_HEALTH();
+    /// @brief Map internal technology to sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY.
     uint8_t get_POWER_SUPPLY_TECHNOLOGY();
 
     float voltage_previous_;
@@ -66,9 +96,6 @@ class BQ25820Node : public rclcpp::Node
 
     // Publishers
     rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_state_pub_;
-    // // // rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr voltage_pub_;
-    // // // rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr current_pub_;
-    // // // rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr charging_status_pub_;
 
     // Timer
     rclcpp::TimerBase::SharedPtr timer_;
