@@ -1,0 +1,34 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Docs: Doxygen (XML)",
+      "type": "shell",
+      "command": "doxygen docs/Doxyfile",
+      "options": { "cwd": "${workspaceFolder}/src/bq25820_node" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Docs: Sphinx (HTML)",
+      "type": "shell",
+      "command": "sphinx-build -b html docs docs/_build/html",
+      "options": { "cwd": "${workspaceFolder}/src/bq25820_node" },
+      "problemMatcher": [],
+      "dependsOn": "Docs: Doxygen (XML)"
+    },
+    {
+      "label": "Docs: Build",
+      "type": "shell",
+      "command": "echo Building API docs...",
+      "dependsOn": "Docs: Sphinx (HTML)",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docs: Clean",
+      "type": "shell",
+      "command": "rm -rf docs/_build",
+      "options": { "cwd": "${workspaceFolder}/src/bq25820_node" },
+      "problemMatcher": []
+    }
+  ]
+}

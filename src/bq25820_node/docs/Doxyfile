@@ -1,0 +1,17 @@
+# Doxygen configuration for bq25820_node
+PROJECT_NAME           = "bq25820_node"
+OUTPUT_DIRECTORY       = _build/doxygen
+INPUT                  = ../include ../src
+FILE_PATTERNS          = *.hpp *.h *.cpp
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+JAVADOC_AUTOBRIEF      = YES
+GENERATE_XML           = YES
+GENERATE_HTML          = NO
+WARN_IF_UNDOCUMENTED   = YES
+WARNINGS               = YES
+QUIET                  = NO
+HAVE_DOT               = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+DOT_GRAPH_MAX_NODES    = 50
