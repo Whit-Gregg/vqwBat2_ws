@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>bq25820_node</name>
+  <name>vqw_lifecycle_manager</name>
   <version>0.0.0</version>
-  <description>Battery Charger BQ25820 Node</description>
+  <description>Node to manage the lifecycle of the BQ25820 component</description>
   <maintainer email="whitgregg@hotmail.com">Whit Gregg</maintainer>
   <license>MIT</license>
 
@@ -11,8 +11,6 @@
 
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
-  <depend>bq25820</depend>
-  <depend>sensor_msgs</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>rclcpp_components</depend>
 

@@ -2,11 +2,14 @@
 #define BQ25820_NODE_HPP
 
 #include <rclcpp/rclcpp.hpp>
+// // // #include <rclcpp_lifecycle/lifecycle_node.hpp>
+// // // #include <rclcpp_lifecycle/lifecycle_publisher.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
-#include <std_msgs/msg/bool.hpp>
-#include <std_msgs/msg/float32.hpp>
 
 #include "bq25820/bq25820.hpp"
+
+namespace bq25820_node
+{
 
 /// @file bq25820_node.hpp
 /// @brief ROS 2 node wrapper for the TI BQ25820 charger driver.
@@ -21,35 +24,27 @@
 class BQ25820Node : public rclcpp::Node
 {
   public:
-    /// @brief Construct the node and start the periodic publisher.
-    BQ25820Node() : Node("bq25820_node")
-    {
-        // Declare parameters
-        this->declare_parameter<std::string>("device_path", "/dev/i2c-1");
-        this->declare_parameter<double>("publish_rate", 1.0);
-
-        // Get parameters
-        device_path_  = this->get_parameter("device_path").as_string();
-        publish_rate_ = this->get_parameter("publish_rate").as_double();
-
-        // Initialize charger
-        charger_.initialize(device_path_);
-
-        // Publishers
-        battery_state_pub_ = this->create_publisher<sensor_msgs::msg::BatteryState>("battery_state", 10);
-        // voltage_pub_ = this->create_publisher<std_msgs::msg::Float32>("battery_voltage", 10);
-        // current_pub_ = this->create_publisher<std_msgs::msg::Float32>("battery_current", 10);
-        // charging_status_pub_ = this->create_publisher<std_msgs::msg::Bool>("charging_status", 10);
-
-        // Timer for periodic updates
-        timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / publish_rate_), std::bind(&BQ25820Node::timer_callback, this));
-
-        RCLCPP_INFO(this->get_logger(), "BQ25820 Node initialized with device path: %s", device_path_.c_str());
+    /// @brief Construct the lifecycle node. Configuration happens in on_configure().
+    BQ25820Node(const rclcpp::NodeOptions & options) : rclcpp::Node("bq25820_node", options  ) {
+        do_configure();
+        do_activate();
     }
 
-    
+  protected:
+
+    // // // // Lifecycle callbacks
+    // // // rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
+    // // // rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
+    // // // rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state) override;
+    // // // rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn on_cleanup(const rclcpp_lifecycle::State & state) override;
+    // // // rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn on_shutdown(const rclcpp_lifecycle::State & state) override;
+    // // // rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn on_error(const rclcpp_lifecycle::State & state) override;
+
   private:
     bq25820::Bq25820 charger_;
+
+    void do_configure();
+    void do_activate();
 
     /// @brief Timer callback invoked at publish_rate_ to update and publish state.
     void timer_callback();
@@ -74,7 +69,7 @@ class BQ25820Node : public rclcpp::Node
 
     /// @brief Whether the pack is currently charging.
     /// @return true if charging.
-    bool   is_charging();
+    bool is_charging();
 
     /// @brief Map internal status to sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS.
     uint8_t get_POWER_SUPPLY_STATUS();
@@ -83,9 +78,9 @@ class BQ25820Node : public rclcpp::Node
     /// @brief Map internal technology to sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY.
     uint8_t get_POWER_SUPPLY_TECHNOLOGY();
 
-    float voltage_previous_;
-    float temperature_previous_;
-    float current_previous_;
+    float   voltage_previous_;
+    float   temperature_previous_;
+    float   current_previous_;
     float   capacity_previous_;
     float   design_capacity_previous_;
     float   percentage_previous_;
@@ -94,8 +89,9 @@ class BQ25820Node : public rclcpp::Node
     uint8_t power_supply_technology_previous_;
     bool    present_previous_;
 
-    // Publishers
-    rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_state_pub_;
+  // Publishers (Lifecycle)
+  //rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_state_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_state_pub_;
 
     // Timer
     rclcpp::TimerBase::SharedPtr timer_;
@@ -111,5 +107,7 @@ class BQ25820Node : public rclcpp::Node
     std::string device_path_;
     double      publish_rate_;
 };
+
+}  // namespace bq25820_node
 
 #endif       // BQ25820_NODE_HPP

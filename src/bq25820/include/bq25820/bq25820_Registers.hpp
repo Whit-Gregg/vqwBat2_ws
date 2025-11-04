@@ -1,13 +1,24 @@
 
 #pragma once
+
+/**
+ * @file bq25820_Registers.hpp
+ * @brief BQ25820 register map and charge status enumerations.
+ *
+ * Defines strongly-typed enums for register addresses (per TI BQ25820 datasheet,
+ * see Table 7-7) and for charge status codes. These are used by the I2C helper and
+ * higher-level driver to perform typed register access and decode status fields.
+ */
 #include <cstdint>
 
 namespace bq25820
 {
-    // Register addresses and acronyms from Table 7-7 (BQ25820)
+    /**
+     * @brief Register addresses and acronyms from Table 7-7 (BQ25820 datasheet).
+     */
     enum class BQ25820_Register : uint8_t
     {
-        REG0x00_Charge_Voltage_limit                   = 0x00,       // Charge Voltage Limit
+        REG0x00_Charge_Voltage_limit                   = 0x00,       ///< Charge Voltage Limit
         REG0x02_Charge_Current_Limit                   = 0x2,
         REG0x06_Input_Current_DPM_Limit                = 0x6,
         REG0x08_Input_Voltage_DPM_Limit                = 0x8,
@@ -49,9 +60,12 @@ namespace bq25820
         REG0x3B_Gate_Driver_Strength_Control           = 0x3B,
         REG0x3C_Gate_Driver_Dead_Time_Control          = 0x3C,
         REG0x3D_Part_Information                       = 0x3D,
-        REG0x62_Reverse_Mode_Battery_Discharge_Current = 0x3E
+        REG0x62_Reverse_Mode_Battery_Discharge_Current = 0x62
     };
 
+    /**
+     * @brief Charger status codes decoded from status registers.
+     */
     enum class BQ25820_Charge_Status : uint8_t
     {
         Not_charging = 0x00,

@@ -36,7 +36,7 @@ namespace bq25820
             {
                 RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "i2c_.open_device() succeeded.");
                 // ToDo: Initialize the BQ25820 registers
-                set_ChargeCurrentLimit(5.0F);       // 5 Amps charge current limit
+                set_ChargeCurrentLimit(10.0F);       // 10 Amps charge current limit
                 set_BatFET_is_ideal_diode(true);
                 set_ChargeEnable(false);
                 set_BatFET_Force_off(false);
@@ -61,7 +61,12 @@ namespace bq25820
                 // R1 = 249k, R2 = 25.2k gives VFB = 1.504V
                 // R1 = 249k, R2 = 25.2k gives VFB = 1.566V
 
-                gpio_.open_device();
+                if (gpio_.open_device()) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "gpio_.open_device() succeeded."); }
+                else
+                    {
+                        RCLCPP_ERROR(rclcpp::get_logger("BQ25820"), "gpio_.open_device() failed.");
+                        skip_gpio = true;
+                    }
             }
         return ok;
     }
@@ -107,6 +112,7 @@ namespace bq25820
     void Bq25820::display_status_changes()
     {
         std::string changes = get_Status_changes_str();
+        if (changes.empty()) return;
         RCLCPP_INFO(rclcpp::get_logger("BQ25820"), changes.c_str());
     }
 
@@ -116,6 +122,33 @@ namespace bq25820
     {
         // Code to run in each iteration
 
+        if ((i2c_.count_of_consecutive_failed_I2C_Reads >= 3) || (i2c_.count_of_consecutive_failed_I2C_Writes >= 3))
+            {
+                spin_once_skip_count++;
+                if (spin_once_skip_count <= max_spin_once_skip_count) return false;
+                spin_once_skip_count                        = 0;
+                i2c_.count_of_consecutive_failed_I2C_Reads  = 0;
+                i2c_.count_of_consecutive_failed_I2C_Writes = 0;
+                if (!i2c_.is_device_opened())
+                    {
+                        bool ok = i2c_.open_device();
+                        if (ok) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Re-opened I2C device successfully."); }
+                        else { RCLCPP_ERROR(rclcpp::get_logger("BQ25820"), "Failed to re-open I2C device."); }
+                        //RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Re-opening I2C device after consecutive failures...");
+                    }
+                get_Part_Information();       // try a simple read to see if I2C is working again
+                get_Part_Information();       // try a simple read to see if I2C is working again
+                get_Part_Information();       // try a simple read to see if I2C is working again
+                return false;
+            }
+        //~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+
+        if (elap_since_watchdog_reset_ > watchdog_reset_interval_ms_)
+            {
+                reset_watchdog_timer();
+                elap_since_watchdog_reset_ = 0;
+                //RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Watchdog timer reset.");
+            }
+        //~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+
         if (elap_since_Status_display_ > elap_since_Status_display_interval_)
             {
                 elap_since_Status_display_ = 0;
@@ -127,7 +160,9 @@ namespace bq25820
             {
                 if (should_start_charging())
                     {
-                        RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Starting charging process.");
+                        float battery_voltage = get_battery_voltage();
+                        float battery_percent = get_battery_percentage();
+                        RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Starting charging process.   Bat Voltage=%.3f V   Battery %%=%3.1f%%", battery_voltage, battery_percent  );
                         if (beginCharging())
                             {
                                 is_charging_ = true;
@@ -136,15 +171,29 @@ namespace bq25820
                         else { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Failed to start charging."); }
                     }
             }
+        else
+            {
+                // Already charging
+                check_for_charging_status_change();
+                if ( (charge_status_current_ == BQ25820_Charge_Status::Charge_Termination_Done))
+                    {
+                        RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Charger reports charge termination done while is_charging_ is true.");
+                        endCharging();
+                    }
+                if ((charge_status_current_ == BQ25820_Charge_Status::Not_charging))
+                    {
+                        RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Charger reports not charging  while is_charging_ is true.");
+                        //endCharging();
+                    }
+            }
         //~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+
         if (check_for_charging_status_change())
             {
                 if (charge_status_current_ == BQ25820_Charge_Status::Charge_Termination_Done)
                     {
                         RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Charging completed.");
-                        is_charging_ = false;
-                        endCharging();
-                        elap_since_charging_completed_ = 0;
+                        // endCharging();
+                        //elap_since_charging_completed_ = 0;
                     }
             }
         //~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+~`=-+
@@ -170,11 +219,13 @@ namespace bq25820
 
     void Bq25820::check_gpio_changes()
     {
+        if (skip_gpio) return;
         int gpio_INT_current   = get_gpio_INT();
         int gpio_STAT1_current = get_gpio_STAT1();
         int gpio_STAT2_current = get_gpio_STAT2();
         int gpio_PG_current    = get_gpio_PG();
         int gpio_CE_current    = get_gpio_CE();
+
         if (gpio_INT_current != gpio_INT_previous_)
             {
                 RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "GPIO INT changed from %d to %d", gpio_INT_previous_, gpio_INT_current);
@@ -198,10 +249,10 @@ namespace bq25820
 
         if (gpio_STAT1_current != gpio_STAT1_previous_ || gpio_STAT2_current != gpio_STAT2_previous_)
             {
-                if (gpio_STAT1_current == 1 && gpio_STAT2_current == 0) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Battery is charging."); }
-                else if (gpio_STAT1_current == 0 && gpio_STAT2_current == 1) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Charging complete."); }
-                else if (gpio_STAT1_current == 0 && gpio_STAT2_current == 0) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Battery is disabled."); }
-                else if (gpio_STAT1_current == 1 && gpio_STAT2_current == 1) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Fault condition."); }
+                if (gpio_STAT1_current == 1 && gpio_STAT2_current == 0) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "GPIO says: Battery is charging."); }
+                else if (gpio_STAT1_current == 0 && gpio_STAT2_current == 1) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "GPIO says: Charging complete."); }
+                else if (gpio_STAT1_current == 0 && gpio_STAT2_current == 0) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "GPIO says: Battery is disabled."); }
+                else if (gpio_STAT1_current == 1 && gpio_STAT2_current == 1) { RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "GPIO says: Fault condition."); }
             }
 
         gpio_INT_previous_   = gpio_INT_current;
@@ -211,7 +262,7 @@ namespace bq25820
         gpio_CE_previous_    = gpio_CE_current;
     }
 
-    bool Bq25820::should_start_charging() const
+    bool Bq25820::should_start_charging()
     {
         if (is_charging()) return false;
         if (ADC_VAC_value_volts_ < 15.0F) return false;
@@ -225,7 +276,7 @@ namespace bq25820
 
     float Bq25820::get_charging_current() const { return ADC_IBAT_value_amps_; }
 
-    bool Bq25820::is_charging() const
+    bool Bq25820::is_charging()
     {
         uint8_t stat1 = i2c_.read_reg8(BQ25820_Register::REG0x21_Charger_Status_1);
         return (stat1 & bit0) != 0;
@@ -247,12 +298,13 @@ namespace bq25820
     //~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=
     std::string Bq25820::ADC_values_str()
     {
+        float bat_percent = get_battery_percentage();
         char buf[256];
         sprintf(buf, "ADC Values:\n");
         sprintf(buf + strlen(buf), "      iAC = %4.2f\n", ADC_IAC_value_amps_);
         sprintf(buf + strlen(buf), "     iBAT = %4.2f\n", ADC_IBAT_value_amps_);
         sprintf(buf + strlen(buf), "      vAC = %4.2f\n", ADC_VAC_value_volts_);
-        sprintf(buf + strlen(buf), "     vBAT = %4.2f\n", ADC_VBAT_value_volts_);
+        sprintf(buf + strlen(buf), "     vBAT = %4.2f   (%3.1f%%)\n", ADC_VBAT_value_volts_, bat_percent);
         sprintf(buf + strlen(buf), "     vSYS = %4.2f\n", ADC_VSYS_value_volts_);
         sprintf(buf + strlen(buf), "     TS_c = %4.2f\n", ADC_TS_value_celsius_);
         sprintf(buf + strlen(buf), "   TS_per = %4.2f\n", ADC_TS_value_percent_of_REGN_);
@@ -266,6 +318,12 @@ namespace bq25820
     }
 
     //~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=
+    void Bq25820::reset_watchdog_timer()
+    {
+        uint8_t reg_value = i2c_.read_reg8(BQ25820_Register::REG0x17_Charger_Control);
+        reg_value |= bit5;       // Set WD_RST bit to reset watchdog timer
+        i2c_.write_reg8(BQ25820_Register::REG0x17_Charger_Control, reg_value);
+    }
     //~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=
     void Bq25820::set_BatFET_is_ideal_diode(bool enable)
     {
@@ -278,8 +336,14 @@ namespace bq25820
     void Bq25820::set_ChargeEnable(bool enable)
     {
         uint8_t reg_value = i2c_.read_reg8(BQ25820_Register::REG0x17_Charger_Control);
-        if (enable) { reg_value |= bit0; }
-        else { reg_value &= ~bit0; }
+        if (enable) { 
+            reg_value |= bit0;  // enable charging
+            reg_value |= bit4;  // disable /CE pin control
+        }
+        else { 
+            reg_value &= ~bit0;     // disable charging
+            reg_value &= ~bit4;     // enable /CE pin control
+         }
         i2c_.write_reg8(BQ25820_Register::REG0x17_Charger_Control, reg_value);
     }
 
@@ -291,7 +355,7 @@ namespace bq25820
         i2c_.write_reg8(BQ25820_Register::REG0x19_Power_Path_and_Reverse_Mode_Control, reg_value);
     }
 
-    bool Bq25820::input_power_good() const
+    bool Bq25820::input_power_good()
     {
         uint8_t stat2          = i2c_.read_reg8(BQ25820_Register::REG0x22_Charger_Status_2);
         bool    input_power_ok = (stat2 & bit7) != 0;
@@ -333,6 +397,7 @@ namespace bq25820
         reg_value |= bit6;       // enable one-shot
 
         i2c_.write_reg8(BQ25820_Register::REG0x2B_ADC_Control, reg_value);
+
         adc_OneShot_in_progress_ = true;
         // RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "start_ADC_Conversion");
     }
@@ -406,15 +471,31 @@ namespace bq25820
 
     //~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=
     //~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=
-
+    void Bq25820::disable_ICHG_pin_control(bool disable)       // disable ICHG pin control by setting EN_ICHG_PIN=0
+    {
+        uint8_t reg_value = i2c_.read_reg8(BQ25820_Register::REG0x18_Pin_Control);
+        if (disable)
+            {
+                reg_value &= ~bit4;  // disable /CE pin control
+            }
+        else
+            {
+                reg_value |= bit4;     // enable /CE pin control
+            }
+        i2c_.write_reg8(BQ25820_Register::REG0x18_Pin_Control, reg_value);
+    }
     //~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=
 
     bool Bq25820::beginCharging()
     {
         bool ok = false;
+        disable_ICHG_pin_control(true);   // disable ICHG pin control
+        set_ChargeCurrentLimit(20.0F);       // 20 Amps charge current limit
+        set_ChargeVoltageLimit(16.8F);       // 16.8 Volts charge voltage limit
         set_ChargeEnable(true);
         ok           = true;
         is_charging_ = true;
+        RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "*******  Start Charging.    Battery Voltage = %4.2f V   Battery %% = %4.0f %%  ********", get_battery_voltage(), get_battery_percentage());
         return ok;
     }
 
@@ -422,8 +503,12 @@ namespace bq25820
     {
         bool ok = false;
         set_ChargeEnable(false);
+        disable_ICHG_pin_control(false);   // enable ICHG pin control
         ok           = true;
         is_charging_ = false;
+        elap_since_charging_completed_ = 0;
+
+        RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "*******  End Charging.    Battery Voltage = %4.2f V   Battery %% = %4.0f %%  ********", get_battery_voltage(), get_battery_percentage());
         return ok;
     }
 
@@ -431,21 +516,34 @@ namespace bq25820
     {
         charge_status_previous_ = charge_status_current_;
         charge_status_current_  = get_charging_status();
-        bool has_charged        = (charge_status_current_ != charge_status_previous_);
-        if (has_charged)
+        bool has_changed        = (charge_status_current_ != charge_status_previous_);
+        if (has_changed)
             {
                 RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Charging status changed from %s to %s",
                             get_BQ25820_Charge_Status_str(charge_status_previous_).c_str(), get_BQ25820_Charge_Status_str(charge_status_current_).c_str());
             }
-        return has_charged;
+        return has_changed;
     }
 
-    BQ25820_Charge_Status Bq25820::get_charging_status() const
+    BQ25820_Charge_Status Bq25820::get_charging_status()
     {
         uint8_t v = get_Charger_Status1();
         v         = v & 0x07;
         return static_cast<BQ25820_Charge_Status>(v);
     }
+
+    void Bq25820::set_ChargeVoltageLimit(float limit_in_volts)
+    {
+        if (limit_in_volts < 16.37F) limit_in_volts = 16.37F;
+        if (limit_in_volts > 17.04F) limit_in_volts = 17.04F;
+        float range      = limit_in_volts - 16.37F;
+        float range_max = 17.04F - 16.37F;
+        float    val_f     = (range / range_max) * 31.0F;
+        uint16_t reg_value = static_cast<uint16_t>(val_f);
+        i2c_.write_reg16(BQ25820_Register::REG0x00_Charge_Voltage_limit, reg_value);
+        RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Set Charge Voltage Limit to %.2f Volts,    reg_value=0x%02X", limit_in_volts, reg_value);
+    }
+
 
     void Bq25820::set_ChargeCurrentLimit(float limit_in_amps)
     {
@@ -453,7 +551,8 @@ namespace bq25820
         if (limit_in_amps > 20) limit_in_amps = 20;
         float    val_f     = (limit_in_amps * 20);
         uint16_t reg_value = static_cast<uint16_t>(val_f);
-        i2c_.write_reg16(static_cast<uint8_t>(BQ25820_Register::REG0x02_Charge_Current_Limit), reg_value);
+        i2c_.write_reg16(BQ25820_Register::REG0x02_Charge_Current_Limit, reg_value);
+        RCLCPP_INFO(rclcpp::get_logger("BQ25820"), "Set Charge Current Limit to %.2f Amps,    reg_value=0x%04X", limit_in_amps, reg_value);
     }
 
     //~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=~-+=
@@ -534,7 +633,7 @@ namespace bq25820
     {
         std::string status;
         uint8_t     changes = get_status_bits_changes(flag1_previous_, flag1_current_);
-        if (changes & bit7) status += " ADC Done INT changed;";
+        // if (changes & bit7) status += " ADC Done INT changed;";
         if (changes & bit6) status += " Input Current INT changed;";
         if (changes & bit5) status += " Input Voltage INT changed;";
         if (changes & bit3) status += " WD_STAT rising INT changed;";
@@ -619,8 +718,8 @@ namespace bq25820
     {
         std::string status;
         if (stat3 & bit2) status += " Reverse Mode;";
-        if (stat3 & bit1) status += " ACFET On;";
-        if (stat3 & bit0) status += " BATFET On;";
+        if (stat3 & bit1) {status += " ACFET On;";} else {status += " ACFET Off;";}
+        if (stat3 & bit0) {status += " BATFET On;";} else {status += " BATFET Off;";}
         return status;
     }
 
@@ -690,7 +789,7 @@ namespace bq25820
         return status;
     }
 
-    std::string Bq25820::get_Status_str() const
+    std::string Bq25820::get_Status_str()
     {
         std::string status     = "BQ25820 Status:\n";
         uint8_t     stat1      = get_Charger_Status1();
@@ -700,9 +799,9 @@ namespace bq25820
         uint8_t     flag1      = get_Charger_Flag1();
         uint8_t     flag2      = get_Charger_Flag2();
         uint8_t     fault_flag = get_Fault_Flag();
-        uint8_t     part_info  = get_Part_Information();
+        //uint8_t     part_info  = get_Part_Information();
 
-        status += "BQ25820 Status:\n";
+        // status += "BQ25820 Status:\n";
         status += "Stat1: " + get_Charger_Status1_str(stat1) + "\n";
         status += "Stat2: " + get_Charger_Status2_str(stat2) + "\n";
         status += "Stat3: " + get_Charger_Status3_str(stat3) + "\n";
@@ -710,7 +809,7 @@ namespace bq25820
         status += "Flag1: " + get_Charger_Flag1_str(flag1) + "\n";
         status += "Flag2: " + get_Charger_Flag2_str(flag2) + "\n";
         status += "Fault Flag: " + get_Fault_Flag_str(fault_flag) + "\n";
-        status += "Part Information: " + get_Part_Information_str(part_info) + "\n";
+        //status += "Part Information: " + get_Part_Information_str(part_info) + "\n";
 
         return status;
     }

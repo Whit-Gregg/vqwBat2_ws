@@ -11,22 +11,45 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(bq25820 REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(rclcpp_components REQUIRED)
+
 
 add_executable(bq25820_node src/bq25820_node.cpp)
+## add_library(bq25820_component SHARED src/bq25820_node.cpp)
 
+target_compile_features(bq25820_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
 target_include_directories(bq25820_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 
-target_compile_features(bq25820_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-target_link_libraries(
-  bq25820_node
-  bq25820::bq25820
-  ${rclcpp_TARGETS}
-  ${std_msgs_TARGETS}
+target_link_libraries(bq25820_node PUBLIC
   ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+  bq25820::bq25820
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs_library
 )
+
+# # # rclcpp_components_register_node(bq25820_node
+# # #   PLUGIN "bq25820_node::BQ25820Node"
+# # #   EXECUTABLE bq25820_node
+# # # )
+
+# # # ament_export_libraries(bq25820_component)
+
+#ament_export_targets(export_bq25820_component)
+# ament_export_targets(bq25820_component
+#   EXPORT export_bq25820_component
+#   )
+
+# install(TARGETS bq25820_node
+#         EXPORT export_bq25820_node
+#         ARCHIVE DESTINATION lib
+#         LIBRARY DESTINATION lib
+#         RUNTIME DESTINATION bin
+# )
 
 install(TARGETS bq25820_node
   DESTINATION lib/${PROJECT_NAME})
@@ -42,5 +65,9 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+ament_export_include_directories(
+  "include/${PROJECT_NAME}"
+)
 
 ament_package()
