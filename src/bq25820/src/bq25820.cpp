@@ -268,7 +268,7 @@ namespace bq25820
         if (ADC_VAC_value_volts_ < 15.0F) return false;
         if (!input_power_good()) return false;
         if (elap_since_charging_completed_ < elap_since_charging_completed_interval_) return false;
-        if (get_battery_percentage() > 90.0F) return false;
+        if (get_battery_percentage() > 82.0F) return false;
         return true;
     }
 
@@ -491,7 +491,7 @@ namespace bq25820
         bool ok = false;
         disable_ICHG_pin_control(true);   // disable ICHG pin control
         set_ChargeCurrentLimit(20.0F);       // 20 Amps charge current limit
-        set_ChargeVoltageLimit(16.8F);       // 16.8 Volts charge voltage limit
+        set_ChargeVoltageLimit(17.1F);       // 17.1 Volts charge voltage limit
         set_ChargeEnable(true);
         ok           = true;
         is_charging_ = true;
